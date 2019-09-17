@@ -1,8 +1,10 @@
 ---
 title: "Data Visualization and Analysis of Backstreet Boys Song Lyrics"
 author: "Tong Dai"
-date: "9/12/2019"
-output: html_document
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output:
+  html_document: default
+  pdf_document: default
 ---
 
 <center>
@@ -41,8 +43,8 @@ The Backstreet Boys are one of the few boy bands to have continued success long 
 #### Text mining
 
 + word cloud
++ sentiment analysis
 + topic modeling
-+ sentiment analysis (includes chord diagram)
 
 #### About datasets: 
 
@@ -50,6 +52,26 @@ The Backstreet Boys are one of the few boy bands to have continued success long 
 
  + "artists.csv" provides the background information of all the artistis. These information are scraped from [LyricsFreak](https://www.lyricsfreak.com/).
 
+#### Questions to answer:
++ Do number of words in each song have impact to number of their fan base? 
++ Can their song bring emotion impact to audiences?
++ Do you really know who is BackStreet Boys? Can we find our their life journey and personalities from the songs they wrote?
+
+<br>
+
+#### Package descriptions:
++ `tm` is a framework for text mining applications within R;
++ `tidytext` allows text mining using 'dplyr', 'ggplot2', and other tidy tools;
++ `tidyverse` is an opinionated collection of R packages designed for data science. All packages share an underlying design philosophy, grammar, and data structures;
++ `DT` provides an R interface to the JavaScript library DataTables;
++ `wordcloud` provides visual presentation of text distribution;
++ `scales` graphical scales map data to aesthetics, and provide methods for automatically determining breaks and labels for axes and legends.
++ `gridExtra` Provides a number of user-level functions to work with "grid" graphics, notably to arrange multiple grid-based plots on a page, and draw tables;
++ `ngram` An n-gram is a sequence of n "words" taken, in order, from a body of text;
++ `igraph` Routines for simple graphs and network analysis;
++ `ggraph` The grammar of graphics as implemented in ggplot2 is a poor fit for graph and network visualizations due to its reliance on tabular data input;
++ `rsconnect` Programmatic deployment interface for 'RPubs', 'shinyapps.io', and 'RStudio Connect'. Supported content types include R Markdown documents, Shiny applications, Plumber APIs, plots, and static web content;
++ `data.table` is a package for fast aggregation of large data.
 
 
 ```{r setup, include=FALSE}
@@ -57,11 +79,8 @@ knitr::opts_chunk$set(echo = TRUE)
 ```
 
 
-
-Let’s first find out the top 10 songs with the most number of words. The code snippet given below includes the packages required in this analysis and finds out the top songs in terms of length.
-
 ```{r load packages, message=FALSE, warning=FALSE,echo=FALSE}
-packages.used=c("magrittr", "sentimentr", "stringr","dplyr","ggplot2","tm","wordcloud","tidytext","tidyr","igraph","ggraph","readr","circlize","reshape2","topicmodels")
+packages.used=c("magrittr", "sentimentr", "stringr","dplyr","ggplot2","tm","wordcloud","tidytext","tidyr","igraph","ggraph","readr","circlize","reshape2","topicmodels","factoextra")
 
 # check packages that need to be installed.
 packages.needed=setdiff(packages.used, 
@@ -88,9 +107,8 @@ library(readr)
 library(circlize)
 library(reshape2)
 library(topicmodels)
+library(factoextra)
 ```
-
-<br>
 
 This report is prepared with the following environmental settings.
 
@@ -100,11 +118,137 @@ print(R.version)
 
 <br>
 
-Step 1 - Load the processed text data along with artist csv dataset
 
-```{r load processed dataset, message=FALSE}
+
+#### Read Data
+
+```{r}
+# load lyrics data
+load(file = "../data/lyrics.RData")
+```
+
+
+After file (lyrics.RData) is loaded, I performed below steps to clean the dataset and turn it into readable format, specifically by removing stopwords and creating a tidy version of texts which is saved in $ output $ file.
+
+Then,I combine the processed data with Artist information ‘artists.csv’ saved in $ data $ file to generate the dataset for this report.
+
+
+#### Cleaning of text
+
+We clean the text by converting all the letters to the lower case, and removing punctuation, numbers, empty words and extra white space.
+
+
+```{r text processing in tm,warning=FALSE, message=FALSE,echo=FALSE}
+
+# function for removimg leading and trailing whitespace from character strings 
+leadingWhitespace <- content_transformer(function(x) str_trim(x, side = "both"))
+
+# remove stop words
+data("stop_words")
+word <- c("lot", "today", "months", "month", "wanna", "wouldnt", "wasnt", "ha", "na", "ooh", "da",
+        "gonna", "im", "dont", "aint", "wont", "yeah", "la", "oi", "nigga", "fuck",
+          "hey", "year", "years", "last", "past", "feel")
+stop_words <- c(stop_words$word, word)
+
+# clean the data and make a corpus
+corpus <- VCorpus(VectorSource(dt_lyrics$lyrics))%>%
+  tm_map(content_transformer(tolower))%>%
+  tm_map(removePunctuation)%>%
+  tm_map(removeNumbers)%>%
+  tm_map(removeWords, character(0))%>%
+  tm_map(removeWords, stop_words)%>%
+  tm_map(stripWhitespace)%>%
+  tm_map(leadingWhitespace)
+```
+
+
+#### Stemming words and converting tm object to tidy object
+
+Stemming reduces a word to its word *stem*. We stem the words here and then convert the "tm" object to a "tidy" object for much faster processing.
+
+```{r stemming}
+stemmed <- tm_map(corpus, stemDocument) %>%
+  tidy() %>%
+  select(text)
+```
+
+
+#### Creating tidy format of the dictionary to be used for completing stems
+
+We also need a dictionary to look up the words corresponding to the stems.
+
+```{r tidy dictionary}
+dict <- tidy(corpus) %>%
+  select(text) %>%
+  unnest_tokens(dictionary, text)
+```
+
+
+#### Combining stems and dictionary into the same tibble
+
+Here we combine the stems and the dictionary into the same "tidy" object.
+
+```{r tidy stems with dictionary}
+completed <- stemmed %>%
+  mutate(id = row_number()) %>%
+  unnest_tokens(stems, text) %>%
+  bind_cols(dict) 
+```
+
+
+#### Stem completion
+
+Lastly, we complete the stems by picking the corresponding word with the highest frequency.
+
+```{r stem completion, warning=FALSE, message=FALSE}
+completed <- completed %>%
+  group_by(stems) %>%
+  count(dictionary) %>%
+  mutate(word = dictionary[which.max(n)]) %>%
+  ungroup() %>%
+  select(stems, word) %>%
+  distinct() %>%
+  right_join(completed) %>%
+  select(-stems)
+```
+
+#### Pasting stem completed individual words into their respective lyrics
+
+We want our processed words to resemble the structure of the original lyrics. So we paste the words together to form processed lyrics.
+
+```{r reverse unnest}
+completed <- completed %>%
+  group_by(id) %>%
+  summarise(stemmedwords= str_c(word, collapse = " ")) %>%
+  ungroup()
+```
+
+#### Keeping a track of the processed lyrics with their own ID
+
+```{r cleaned hm_data, warning=FALSE, message=FALSE}
+dt_lyrics <- dt_lyrics %>%
+  mutate(id = row_number()) %>%
+  inner_join(completed)
+```
+
+#### Exporting the processed text data into a CSV file
+
+```{r export data}
+save(dt_lyrics, file="../output/processed_lyrics.RData")
+```
+
+<br>
+
+Let’s first find out the top 10 songs with the most number of words. The code snippet given below includes the packages required in this analysis and finds out the top songs in terms of length.
+
+<br>
+
+Load the processed text data along with artist csv dataset
+
+```{r load processed dataset, message=FALSE, results='hide'}
 # We use the processed data for our analysis
 load('../output/processed_lyrics.RData') 
+
 # load artist information
 dt_artist <- read_csv('../data/artists.csv') 
 
@@ -121,9 +265,7 @@ Question 1: BSB is such a classic and old boy band, what's the secret for their 
 
 For me, I love BSB because their songs are so touching and emotion. With reasonable lyrics words, plus their emotion express inside the song have provided a different kind of listening experience compare to other well-known artist.
 
-
-
-```{r, warning = FALSE}
+```{r, warning = FALSE, }
 # check how many charters for each lyrics text
 lyrics$length <- str_count(lyrics$lyrics,"\\S+") 
 
@@ -468,21 +610,18 @@ title("Relationship between emotion and song's year of release")
 
 We can see that `uncertainty` has maximum share for the years 2006 and 2007 Overall, `litigious`, `constraining` are the emotions with least score;
 
-<center>
-
 For topic modeling on lyrics, we start with sentences and prepare a snipet with a given sentence with the flanking sentences. 
 
 <br>
 
-```{r, warning=FALSE, message=FALSE}
-# assign new variable
-topic_docs <- docs
-```
 
 
 #### Text basic processing & Topic modeling
 
-```{r, warning=FALSE, message=FALSE, echo=T, results='hide'}
+```{r, warning=FALSE, message=FALSE, results='hide'}
+# assign new variable
+topic_docs <- docs
+
 #remove potentially problematic symbols
 topic_docs <-tm_map(topic_docs,content_transformer(tolower))
 writeLines(as.character(topic_docs[[sample(1:nrow(lyrics), 1)]]))
@@ -513,7 +652,7 @@ corpus.list=lyrics[rowTotals>0, ]
 ```
 
 
-```{r OutputLDA, warning=FALSE, message=FALSE}
+```{r OutputLDA, warning=FALSE, message=FALSE, results='hide'}
 # Run LDA
 
 #Set parameters for Gibbs sampling
@@ -548,6 +687,7 @@ topicProbabilities <- as.data.frame(ldaOut@gamma)
 write.csv(topicProbabilities,file=paste("../output/LDAGibbs",k,"TopicProbabilities.csv"))
 ```
 
+
 <br>
 
 Based on the most popular terms and the most salient terms for each topic, we assign a hashtag to each topic. This part require manual setup as the topics are likely to change. 
@@ -559,25 +699,17 @@ topics.terms=NULL
 for(i in 1:k){
   topics.terms=rbind(topics.terms, ldaOut@terms[order(terms.beta[i,], decreasing = TRUE)[1:7]])
 }
-topics.terms
-print('------------------------------------------------------------------------------------------------------')
-ldaOut.terms
-```
 
-<br>
+# topics.terms
+# ldaOut.terms
 
-```{r, warning=FALSE, message=FALSE}
+# Assign names to all the topics 
 topics.hash=c("Economy", "Love", "Freedom", "Lifestyle", "Equality", "Belief", "World", "Piece", "Leaders", "Powerful", "Attitude", "Fashion", "Heal", "Fight", "Smart")
 corpus.list$ldatopic=as.vector(ldaOut.topics)
 corpus.list$ldahash=topics.hash[ldaOut.topics]
 colnames(topicProbabilities)=topics.hash
 corpus.list.df=cbind(corpus.list, topicProbabilities)
-```
 
-<br>
-
-
-```{r, warning=FALSE, message=FALSE}
 par(mar=c(1,1,1,1))
 topic.summary=tbl_df(corpus.list.df)%>%
               select(song, Economy:Smart)%>%
@@ -585,36 +717,43 @@ topic.summary=tbl_df(corpus.list.df)%>%
               summarise_each(funs(mean))
 topic.summary=as.data.frame(topic.summary)
 rownames(topic.summary)=topic.summary[,1]
-```
 
-
-```{r, warning=FALSE, message=FALSE}
-speech.df=tbl_df(corpus.list.df)%>%filter(length<20)%>%select(sentences, Economy:Smart)
-as.character(speech.df$sentences[apply(as.data.frame(speech.df[,-1]), 2, which.max)])
-names(speech.df)[-1]
-```
-
-
-
-#### Clustering of topics
-
-```{r clusteringTopics, warning=FALSE, message=FALSE}
 presid.summary=tbl_df(corpus.list.df)%>%
   select(id, Economy:Smart)%>%
   group_by(id)%>%
   summarise_each(funs(mean))
+
+
+# Clustering of topics
 presid.summary=as.data.frame(presid.summary)
+
 rownames(presid.summary)=as.character((presid.summary[,1]))
+
 km.res=kmeans(scale(presid.summary[,-1]), iter.max=200,5)
+
 fviz_cluster(km.res, 
-             stand=T, repel= TRUE,
+             stand=T, 
+             repel= TRUE,
              data = presid.summary[,-1],
-             show.clust.cent=FALSE)
+             show.clust.cent=FALSE
+            )
 ```
 
+Output of Clustering of Topics, As you can see, we bucket songs into 5 clusters, and clearly there are overlap situation between songs, but there is one particular cluster contain most similar songs.
 
+<br>
 
-![ ](../figs/bsb.jpg) 
+<center>
+
+![ ](../figs/TopicClustering.jpg) 
+
+</center>
+
+<br>
+
+<center>
+
+![ ](../figs/bsb.jpg)
 
 </center>
 
@@ -624,7 +763,7 @@ fviz_cluster(km.res,
 
 In this study we performed exploratory analysis and text mining, which includes NLP for sentiment analysis.
 
-1. BackStreet Boys not only good looking, but they are also smart. They know how to attract audience attention and collect fan base by limiting the number of words they used inside their song, and maintain that familiarty and momentum throughout history. That's why they are the number one band globally. 
+1. Do number of words in the song have impact number of fan base?  BackStreet Boys not only good looking people, but they are also smart. They know how to attract audience attention and collect fan base by limiting the number of words they used inside their song, and maintain that familiarty and momentum throughout history. That's why they are the number one band globally. 
 
 2. As we dive deeper into the song lyrics, we can tell the lyrics are meant to be more positive than negative to the public. They used lots of words like love, baby, you’re, heart, keep give, back, ... to share love with one another. This is exactly what people need in this world, surrounded by the hate, disrespect, and more. Lots of time people may face devoice, company firing, car accident, by listening their song, you can get back again because of encouragement you will receive from their songs. This is exactly what BSB want to share with the world, positive encouragement and hope; that's another reason why they are the number one bank in the world.
 
