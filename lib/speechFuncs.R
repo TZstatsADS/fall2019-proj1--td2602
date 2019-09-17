@@ -27,11 +27,11 @@ f.plotsent.len=function(In.list, InFile, InType, InTerm, President){
             "red2", "chartreuse3", "blueviolet","dodgerblue3")
   
   In.list$topemotion=apply(select(In.list, 
-                                    anticipation:sadness), 
-                                 1, which.max)
+                                  anticipation:sadness), 
+                           1, which.max)
   In.list$topemotion.v=apply(select(In.list,
                                     anticipation:sadness), 
-                                   1, max)
+                             1, max)
   In.list$topemotion[In.list$topemotion.v<0.01]=0
   In.list$topemotion=In.list$topemotion+1
   
@@ -39,7 +39,7 @@ f.plotsent.len=function(In.list, InFile, InType, InTerm, President){
   In.list$topemotion.v[temp<0.05]=1
   
   df=In.list%>%filter(File==InFile, 
-                            type==InType, Term==InTerm)%>%
+                      type==InType, Term==InTerm)%>%
     select(sent.id, word.count, 
            topemotion, topemotion.v)
   
@@ -50,7 +50,7 @@ f.plotsent.len=function(In.list, InFile, InType, InTerm, President){
        type="h", #ylim=c(-10, max(In.list$word.count)),
        main=President)
 }
-  
+
 f.smooth.topic=function(x, y.mat){
   y.out=y.mat
   for(i in 1:ncol(y.mat)){

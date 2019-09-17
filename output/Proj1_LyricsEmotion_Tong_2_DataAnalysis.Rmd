@@ -41,7 +41,7 @@ The Backstreet Boys are one of the few boy bands to have continued success long 
 #### Text mining
 
 + word cloud
-+ bigram network
++ topic modeling
 + sentiment analysis (includes chord diagram)
 
 #### About datasets: 
@@ -61,7 +61,7 @@ knitr::opts_chunk$set(echo = TRUE)
 Let’s first find out the top 10 songs with the most number of words. The code snippet given below includes the packages required in this analysis and finds out the top songs in terms of length.
 
 ```{r load packages, message=FALSE, warning=FALSE,echo=FALSE}
-packages.used=c("magrittr", "sentimentr", "stringr","dplyr","ggplot2","tm","wordcloud","tidytext","tidytext","tidyr","igraph","ggraph","readr","circlize","reshape2")
+packages.used=c("magrittr", "sentimentr", "stringr","dplyr","ggplot2","tm","wordcloud","tidytext","tidyr","igraph","ggraph","readr","circlize","reshape2","topicmodels")
 
 # check packages that need to be installed.
 packages.needed=setdiff(packages.used, 
@@ -87,7 +87,18 @@ library(sentimentr)
 library(readr)
 library(circlize)
 library(reshape2)
+library(topicmodels)
 ```
+
+<br>
+
+This report is prepared with the following environmental settings.
+
+```{r}
+print(R.version)
+```
+
+<br>
 
 Step 1 - Load the processed text data along with artist csv dataset
 
@@ -320,8 +331,8 @@ The chart shows that the positive and negative sentiment scores are relatively c
 
 Now that we have figured out the overall sentiment scores, we should find out the top words that contribute to various emotions and positive/negative sentiment.
 
-```{r, warning=FALSE}
-# prepare for sentiment
+```{r}
+# data Processing --- prepare for sentiment
 lyrics$lyrics <- as.character(lyrics$lyrics)
 
 tidy_lyrics <- lyrics %>% 
@@ -332,9 +343,49 @@ song_wrd_count <- tidy_lyrics %>% count(song)
 lyric_counts <- tidy_lyrics %>%
 left_join(song_wrd_count, by = "song") %>% 
 rename(total_words=n)
+```
 
+
+Using the `Bing` Lexicon we can categorize all words in the tweets as being positive or negative.
+```{r, warning=FALSE}
+# Using the Bing Lexicon we can categorize all words in the tweets as being positive or negative.
+lyric_counts %>%
+  inner_join(get_sentiments('bing'),by = 'word')%>%
+  select('sentiment')%>%
+  group_by(sentiment)%>%
+  summarize(freq=n())%>%
+  ungroup()%>%
+  ggplot(aes(x=sentiment,y=freq))+geom_bar(position='dodge',stat='identity',fill=c('darkred','darkgreen'))
+```
+
+This charts shows most words they used inside the songs are more toward positive emotion. 
+
+Another popular Lexicon is afinn. This lexicon of words assigns scores words on the extent to which they are positive or negative.
+
+```{r, warning=FALSE}
+lyric_value <- lyric_counts %>% 
+inner_join(get_sentiments("afinn"),by="word")
+
+lyric_value %>% 
+count(word,value,sort=TRUE) %>% 
+group_by(value)%>%top_n(n=10) %>% 
+ungroup() %>%
+ggplot(aes(x=reorder(word,n),y=n,fill=value)) +
+geom_col(show.legend = FALSE) + 
+facet_wrap(~value,scales="free") +
+xlab("Counts") + ylab("Words")+
+ggtitle("Top words used to express emotions and Scores") +
+coord_flip()
+```
+
+By applying the afinn lexicon to the words in the tweets, we can compute a score for each words. By averaging the scores of all words, one can obtain an overall sentiment score.
+
+<br>
+
+Use loughran lxicon to see top words used to express emotions and sentiments
+```{r}
 # use loughran lxicon to see top words used to express emotions and sentiments
-lyric_sentiment <- tidy_lyrics %>% 
+lyric_sentiment <- lyric_counts %>% 
 inner_join(get_sentiments("loughran"),by="word")
 
 lyric_sentiment %>% 
@@ -350,6 +401,7 @@ coord_flip()
 ```
 
 The visualization shows top word best represent the emotion within each sentiment. For example, `lost` in negative, `best` or `good` in position, `could` in uncertainty. 
+
 
 This brings to the following question – **Which songs are closely associated with different emotions?**
 
@@ -394,7 +446,6 @@ visualization shows that their songs have more negative words than positive.posi
 This brings to the final question – **how have their sentiment and emotions changed over the years?** For this particular answer we will create a visualization called chord diagram to represent. 
 
 ```{r, warning=FALSE}
-
 grid.col = c("2005" = "#f59e42", "2006" = "#56B4E9", "2007" = "#009E73", "2008" = "#CC79A7", "2009" = "#D55E00", "2010" = "#00D6C9", "2011" = "#c5f542", "2012" = "#e642f5", "2013" = "#4d334f", "2014" = "#eff542", "2016" = "#334f49", "constraining" = "grey", "litigious" = "grey", "negative" = "grey", "positive" = "grey", "uncertainty" = "grey")
 
 year_emotion <- lyric_sentiment %>%
@@ -418,6 +469,150 @@ title("Relationship between emotion and song's year of release")
 We can see that `uncertainty` has maximum share for the years 2006 and 2007 Overall, `litigious`, `constraining` are the emotions with least score;
 
 <center>
+
+For topic modeling on lyrics, we start with sentences and prepare a snipet with a given sentence with the flanking sentences. 
+
+<br>
+
+```{r, warning=FALSE, message=FALSE}
+# assign new variable
+topic_docs <- docs
+```
+
+
+#### Text basic processing & Topic modeling
+
+```{r, warning=FALSE, message=FALSE, echo=T, results='hide'}
+#remove potentially problematic symbols
+topic_docs <-tm_map(topic_docs,content_transformer(tolower))
+writeLines(as.character(topic_docs[[sample(1:nrow(lyrics), 1)]]))
+#remove punctuation
+topic_docs <- tm_map(topic_docs, removePunctuation)
+writeLines(as.character(topic_docs[[sample(1:nrow(lyrics), 1)]]))
+#Strip digits
+topic_docs <- tm_map(topic_docs, removeNumbers)
+writeLines(as.character(topic_docs[[sample(1:nrow(lyrics), 1)]]))
+#remove stopwords
+topic_docs <- tm_map(topic_docs, removeWords, stopwords("english"))
+writeLines(as.character(topic_docs[[sample(1:nrow(lyrics), 1)]]))
+#remove whitespace
+topic_docs <- tm_map(topic_docs, stripWhitespace)
+writeLines(as.character(topic_docs[[sample(1:nrow(lyrics), 1)]]))
+#Stem document
+topic_docs <- tm_map(topic_docs,stemDocument)
+writeLines(as.character(topic_docs[[sample(1:nrow(lyrics), 1)]]))
+```
+
+```{r, warning=FALSE, message=FALSE}
+dtm <- DocumentTermMatrix(topic_docs)
+
+#convert rownames to filenames#convert rownames to filenames
+rowTotals <- apply(dtm , 1, sum) #Find the sum of words in each Document
+dtm  <- dtm[rowTotals> 0, ]
+corpus.list=lyrics[rowTotals>0, ]
+```
+
+
+```{r OutputLDA, warning=FALSE, message=FALSE}
+# Run LDA
+
+#Set parameters for Gibbs sampling
+burnin <- 4000
+iter <- 2000
+thin <- 500
+seed <-list(2003,5,63,100001,765)
+nstart <- 5
+best <- TRUE
+
+#Number of topics
+k <- 15
+
+#Run LDA using Gibbs sampling
+ldaOut <-LDA(dtm, k, method="Gibbs", control=list(nstart=nstart, 
+                                                 seed = seed, best=best,
+                                                 burnin = burnin, iter = iter, 
+                                                 thin=thin))
+
+#write out results
+#docs to topics
+ldaOut.topics <- as.matrix(topics(ldaOut))
+table(c(1:k, ldaOut.topics))
+write.csv(ldaOut.topics,file=paste("../output/LDAGibbs",k,"DocsToTopics.csv"))
+
+#top 6 terms in each topic
+ldaOut.terms <- as.matrix(terms(ldaOut,20))
+write.csv(ldaOut.terms,file=paste("../output/LDAGibbs",k,"TopicsToTerms.csv"))
+
+#probabilities associated with each topic assignment
+topicProbabilities <- as.data.frame(ldaOut@gamma)
+write.csv(topicProbabilities,file=paste("../output/LDAGibbs",k,"TopicProbabilities.csv"))
+```
+
+<br>
+
+Based on the most popular terms and the most salient terms for each topic, we assign a hashtag to each topic. This part require manual setup as the topics are likely to change. 
+
+```{r hashtaging, warning=FALSE, message=FALSE}
+terms.beta=ldaOut@beta
+terms.beta=scale(terms.beta)
+topics.terms=NULL
+for(i in 1:k){
+  topics.terms=rbind(topics.terms, ldaOut@terms[order(terms.beta[i,], decreasing = TRUE)[1:7]])
+}
+topics.terms
+print('------------------------------------------------------------------------------------------------------')
+ldaOut.terms
+```
+
+<br>
+
+```{r, warning=FALSE, message=FALSE}
+topics.hash=c("Economy", "Love", "Freedom", "Lifestyle", "Equality", "Belief", "World", "Piece", "Leaders", "Powerful", "Attitude", "Fashion", "Heal", "Fight", "Smart")
+corpus.list$ldatopic=as.vector(ldaOut.topics)
+corpus.list$ldahash=topics.hash[ldaOut.topics]
+colnames(topicProbabilities)=topics.hash
+corpus.list.df=cbind(corpus.list, topicProbabilities)
+```
+
+<br>
+
+
+```{r, warning=FALSE, message=FALSE}
+par(mar=c(1,1,1,1))
+topic.summary=tbl_df(corpus.list.df)%>%
+              select(song, Economy:Smart)%>%
+              group_by(song)%>%
+              summarise_each(funs(mean))
+topic.summary=as.data.frame(topic.summary)
+rownames(topic.summary)=topic.summary[,1]
+```
+
+
+```{r, warning=FALSE, message=FALSE}
+speech.df=tbl_df(corpus.list.df)%>%filter(length<20)%>%select(sentences, Economy:Smart)
+as.character(speech.df$sentences[apply(as.data.frame(speech.df[,-1]), 2, which.max)])
+names(speech.df)[-1]
+```
+
+
+
+#### Clustering of topics
+
+```{r clusteringTopics, warning=FALSE, message=FALSE}
+presid.summary=tbl_df(corpus.list.df)%>%
+  select(id, Economy:Smart)%>%
+  group_by(id)%>%
+  summarise_each(funs(mean))
+presid.summary=as.data.frame(presid.summary)
+rownames(presid.summary)=as.character((presid.summary[,1]))
+km.res=kmeans(scale(presid.summary[,-1]), iter.max=200,5)
+fviz_cluster(km.res, 
+             stand=T, repel= TRUE,
+             data = presid.summary[,-1],
+             show.clust.cent=FALSE)
+```
+
+
 
 ![ ](../figs/bsb.jpg) 
 
