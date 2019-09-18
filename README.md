@@ -4,17 +4,17 @@
 
 <img src="figs/title1.jpeg" width="500">
 
-### [Project Description](doc/)
+### [Song Lyrics Analysis](doc/)
 This is the first and only *individual* (as opposed to *team*) this semester. 
 
 Term: Fall 2019
 
-+ Projec title: Lorem ipsum dolor sit amet
-+ This project is conducted by [your name]
++ Projec title: Data Visualization and Analysis of Backstreet Boys Song Lyrics
++ This project is conducted by [Tong Dai]
 
-+ Project summary: [a short summary] Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.
++ Project summary: [a short summary] My goal for this project is to perform exploratory analysis and then move to text mining including sentiment analysis which involves Natural Language Processing on top of lyrics data, especially Basketstreet Data. We are trying to find insights by answering few question: Do number of words in each song have impact to number of their fan base? Can their song bring emotion impact to audiences? Do you really know who is BackStreet Boys? Can we find our their life journey and personalities from the songs they wrote?
 
-Following [suggestions](http://nicercode.github.io/blog/2013-04-05-projects/) by [RICH FITZJOHN](http://nicercode.github.io/about/#Team) (@richfitz). This folder is orgarnized as follows.
+Following [suggestions](https://github.com/TZstatsADS/fall2019-proj1--td2602) by [Tong Dai](https://github.com/td2602) (@td2602). This folder is orgarnized as follows.
 
 ```
 proj/
